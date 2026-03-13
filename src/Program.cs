@@ -1,6 +1,7 @@
 using System;
 using ActiveDirectory.Services;
 using ActiveDirectory.Helpers;
+using DotNetEnv;
 
 namespace AD
 {
@@ -9,10 +10,33 @@ namespace AD
         private static readonly string DOMAIN = "sunsetcorp.local";
         private static readonly string SERVER_IP = "10.10.100.8";
 
-        private static readonly string SQL_CONNECTION = "Server=210.17.1.54;Database=store_control;User Id=desadmin;Password=M4B31$tr$d3s4rr0ll0*BDl0g1n#1*;TrustServerCertificate=true;";
+        private static readonly string SQL_CONNECTION;
+        private static readonly string? SQL_SERVER_FOR_LOG;
         private static AuthenticationService _authService = null!;
         private static ActiveDirectoryService _adService = null!;
         private static DatabaseService _dbService = null!;
+
+        static Program()
+        {
+            // Cargar .env si existe (no sobrescribe variables ya definidas en el sistema)
+            Env.TraversePath().Load();
+
+            string? server = Environment.GetEnvironmentVariable("SQL_SERVER");
+            string? database = Environment.GetEnvironmentVariable("SQL_DATABASE");
+            string? user = Environment.GetEnvironmentVariable("SQL_USER");
+            string? password = Environment.GetEnvironmentVariable("SQL_PASSWORD");
+            string trustCert = Environment.GetEnvironmentVariable("SQL_TRUST_SERVER_CERTIFICATE") ?? "true";
+
+            if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(database) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
+            {
+                throw new InvalidOperationException(
+                    "Faltan variables de entorno para la base de datos. Define: SQL_SERVER, SQL_DATABASE, SQL_USER, SQL_PASSWORD. " +
+                    "Puedes crear un archivo .env en la raíz del proyecto (ver .env.example).");
+            }
+
+            SQL_CONNECTION = $"Server={server};Database={database};User Id={user};Password={password};TrustServerCertificate={trustCert};";
+            SQL_SERVER_FOR_LOG = server;
+        }
 
         static void Main(string[] args)
         {
@@ -331,7 +355,7 @@ namespace AD
                 if (_dbService.TestConnection())
                 {
                     Console.WriteLine("✅ Conexión exitosa a SQL Server");
-                    Console.WriteLine($"Cadena de conexión: {SQL_CONNECTION.Split(';')[0]}");
+                    Console.WriteLine($"Servidor: {SQL_SERVER_FOR_LOG}");
                 }
                 else
                 {

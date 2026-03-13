@@ -15,7 +15,7 @@ namespace Store.Services
             _products = new List<Product>();
             _sales = new List<Sale>();
             _nextSaleId = 1;
-            
+
             // Agregar algunos productos de ejemplo
             InitializeSampleData();
         }
@@ -35,7 +35,7 @@ namespace Store.Services
         public void ProcessSale(Sale sale)
         {
             sale.SaleId = _nextSaleId++;
-            
+
             var product = _products.Find(p => p.ProductId == sale.ProductId);
             if (product != null && product.Stock >= sale.QuantitySold)
             {
@@ -61,22 +61,28 @@ namespace Store.Services
         public List<Inventory> GetInventory()
         {
             var inventory = new List<Inventory>();
-            
+
             foreach (var product in _products)
             {
-                inventory.Add(new Inventory 
-                { 
-                    ProductId = product.ProductId, 
-                    QuantityAvailable = product.Stock 
+                inventory.Add(new Inventory
+                {
+                    ProductId = product.ProductId,
+                    QuantityAvailable = product.Stock
                 });
             }
-            
+
             return inventory;
         }
 
         public Product GetProductById(int productId)
         {
-            return _products.Find(p => p.ProductId == productId);
+            var product = _products.Find(p => p.ProductId == productId);
+            if (product == null)
+            {
+                // Retorna un producto vacío para evitar null reference
+                return new Product(0, string.Empty, 0m, 0);
+            }
+            return product;
         }
     }
 }

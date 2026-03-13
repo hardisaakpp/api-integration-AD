@@ -2,7 +2,7 @@ using System;
 using ActiveDirectory.Services;
 using ActiveDirectory.Helpers;
 
-namespace StoreControl2
+namespace AD
 {
     class Program
     {
@@ -10,9 +10,9 @@ namespace StoreControl2
         private static readonly string SERVER_IP = "10.10.100.8";
 
         private static readonly string SQL_CONNECTION = "Server=210.17.1.54;Database=store_control;User Id=desadmin;Password=M4B31$tr$d3s4rr0ll0*BDl0g1n#1*;TrustServerCertificate=true;";
-        private static AuthenticationService _authService;
-        private static ActiveDirectoryService _adService;
-        private static DatabaseService _dbService;
+        private static AuthenticationService _authService = null!;
+        private static ActiveDirectoryService _adService = null!;
+        private static DatabaseService _dbService = null!;
 
         static void Main(string[] args)
         {
@@ -42,7 +42,7 @@ namespace StoreControl2
             Console.WriteLine("7. Salir");
             Console.Write("\nOpción: ");
 
-            string opcion = Console.ReadLine();
+            string opcion = Console.ReadLine() ?? "";
 
             switch (opcion)
             {
@@ -211,10 +211,10 @@ namespace StoreControl2
             Console.WriteLine("=== CLASE 2: AUTENTICACIÓN ===");
 
             Console.Write("Usuario: ");
-            string usuario = Console.ReadLine();
+            string usuario = Console.ReadLine() ?? "";
 
             Console.Write("Contraseña: ");
-            string password = PasswordHelper.ReadPassword();
+            string password = PasswordHelper.ReadPassword() ?? "";
 
             try
             {

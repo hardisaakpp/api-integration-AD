@@ -1,4 +1,5 @@
 import axios from 'axios'
+import md5 from 'js-md5'
 
 /**
  * Función auxiliar para extraer token de la respuesta
@@ -201,5 +202,181 @@ export const mba3Service = {
    */
   decodeToken(token) {
     return decodeTokenPayload(token)
+  },
+
+  /**
+   * Realizar consulta a MBA3 usando Digest Auth y form-data
+   * @param {string} url - URL completa del endpoint
+   * @param {Object} formData - Objeto con los datos del form-data (key-value pairs)
+   * @param {string} username - Usuario para Digest Auth
+   * @param {string} password - Contraseña para Digest Auth
+   * @param {Object} customHeaders - Headers personalizados adicionales (opcional)
+   * @returns {Promise<{status: number, data: any, headers: any}>}
+   */
+  async consulta(url, formData, username, password, customHeaders = {}) {
+    // Usar proxy si es URL local
+    const useProxy = url.includes('192.168.2.159') || url.includes('localhost')
+    let targetUrl = url
+    let uri = ''
+    
+    if (useProxy) {
+      // Extraer la ruta del endpoint de la URL completa
+      try {
+        const urlObj = new URL(url)
+        uri = urlObj.pathname + urlObj.search
+        targetUrl = `/mba3-proxy${uri}`
+      } catch {
+        // Si no es una URL válida, usar como está
+        uri = url.startsWith('/') ? url : `/${url}`
+        targetUrl = `/mba3-proxy${uri}`
+      }
+    } else {
+      try {
+        const urlObj = new URL(url)
+        uri = urlObj.pathname + urlObj.search
+      } catch {
+        uri = url
+      }
+    }
+
+    // Convertir objeto a FormData
+    const formDataObj = new FormData()
+    for (const [key, value] of Object.entries(formData)) {
+      formDataObj.append(key, value)
+    }
+
+    // Función para parsear el challenge de Digest Auth
+    function parseDigestChallenge(wwwAuthenticate) {
+      const challenge = {}
+      // Remover "Digest " del inicio
+      const challengeStr = wwwAuthenticate.replace(/^Digest\s+/i, '')
+      
+      // Regex mejorado para capturar valores con o sin comillas
+      const regex = /(\w+)=(?:"([^"]*)"|([^,\s]+))/g
+      let match
+      while ((match = regex.exec(challengeStr)) !== null) {
+        challenge[match[1]] = match[2] || match[3] || ''
+      }
+      return challenge
+    }
+
+    // Función para generar el header de Digest Auth
+    function generateDigestAuthHeader(method, uri, challenge, username, password) {
+      const realm = challenge.realm || ''
+      const nonce = challenge.nonce || ''
+      const qop = challenge.qop || ''
+      const algorithm = challenge.algorithm || 'MD5'
+      
+      // HA1 = MD5(username:realm:password)
+      const ha1 = md5(`${username}:${realm}:${password}`)
+      
+      // HA2 = MD5(method:uri)
+      const ha2 = md5(`${method}:${uri}`)
+      
+      // Response = MD5(HA1:nonce:nonceCount:cnonce:qop:HA2)
+      // Para simplificar, usamos qop=auth sin nonceCount y cnonce
+      let response
+      if (qop && qop.includes('auth')) {
+        const cnonce = md5(`${Date.now()}:${Math.random()}`).substring(0, 16)
+        const nc = '00000001'
+        response = md5(`${ha1}:${nonce}:${nc}:${cnonce}:auth:${ha2}`)
+        
+        return `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", qop=auth, nc=${nc}, cnonce="${cnonce}", response="${response}", algorithm=${algorithm}`
+      } else {
+        // Sin qop
+        response = md5(`${ha1}:${nonce}:${ha2}`)
+        return `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}", algorithm=${algorithm}`
+      }
+    }
+
+    try {
+      // Primera petición sin auth para obtener el challenge
+      let response
+      try {
+        // Combinar headers personalizados con los headers por defecto
+        const headers = {
+          'Accept': 'application/json',
+          ...customHeaders
+        }
+        
+        response = await axios.post(targetUrl, formDataObj, {
+          headers,
+          validateStatus: () => true, // No lanzar error para 401
+          timeout: 30000
+        })
+      } catch (error) {
+        if (error.response && error.response.status === 401) {
+          response = error.response
+        } else {
+          throw error
+        }
+      }
+
+      // Si ya tenemos 200, retornar directamente
+      if (response.status === 200) {
+        return {
+          status: response.status,
+          data: response.data,
+          headers: response.headers
+        }
+      }
+
+      // Si es 401, obtener el challenge y hacer la petición con Digest Auth
+      if (response.status === 401) {
+        const wwwAuthenticate = response.headers['www-authenticate'] || response.headers['WWW-Authenticate']
+        
+        if (!wwwAuthenticate || !wwwAuthenticate.startsWith('Digest')) {
+          throw new Error('El servidor no soporta Digest Auth o no envió el challenge correctamente')
+        }
+
+        const challenge = parseDigestChallenge(wwwAuthenticate)
+        
+        // Usar la URI calculada anteriormente o extraerla de targetUrl
+        let digestUri = uri
+        if (!digestUri) {
+          try {
+            const urlObj = new URL(targetUrl)
+            digestUri = urlObj.pathname + urlObj.search
+          } catch {
+            // Si targetUrl es relativa, usar como está
+            digestUri = targetUrl.startsWith('/') ? targetUrl : `/${targetUrl}`
+          }
+        }
+        
+        // Generar header de Digest Auth
+        const authHeader = generateDigestAuthHeader('POST', digestUri, challenge, username, password)
+
+        // Combinar headers personalizados con los headers por defecto
+        // El header Authorization tiene prioridad sobre cualquier header personalizado
+        const headers = {
+          'Accept': 'application/json',
+          ...customHeaders,
+          'Authorization': authHeader // Authorization siempre al final para tener prioridad
+        }
+
+        // Segunda petición con Digest Auth
+        response = await axios.post(targetUrl, formDataObj, {
+          headers,
+          validateStatus: () => true,
+          timeout: 30000
+        })
+      }
+
+      return {
+        status: response.status,
+        data: response.data,
+        headers: response.headers
+      }
+    } catch (error) {
+      if (error.response) {
+        return {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+          error: error.message
+        }
+      }
+      throw error
+    }
   }
 }

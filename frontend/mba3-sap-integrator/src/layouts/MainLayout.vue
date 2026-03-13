@@ -74,7 +74,8 @@ const menuItems = [
   { path: '/transformacion', label: 'Transformación', icon: '🔄' },
   { path: '/integracion-sap', label: 'Integración SAP', icon: '🔗' },
   { path: '/auditoria', label: 'Auditoría', icon: '🧾' },
-  { path: '/configuracion', label: 'Configuración', icon: '⚙️' }
+  { path: '/configuracion', label: 'Configuración', icon: '⚙️' },
+  { path: '/consultas-mba3', label: 'Consultas MBA3', icon: '🔍' }
 ]
 
 function toggleSidebar() {

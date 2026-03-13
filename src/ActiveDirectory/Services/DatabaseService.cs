@@ -45,7 +45,7 @@ namespace ActiveDirectory.Services
                 try
                 {
                     // Verificar si el usuario ya existe
-                    if (UsuarioExiste(connection, usuario.Username))
+                    if (UsuarioExiste(connection, usuario.Username ?? ""))
                     {
                         ActualizarUsuario(connection, usuario);
                         updatedCount++;
@@ -76,10 +76,10 @@ namespace ActiveDirectory.Services
         private bool UsuarioExiste(SqlConnection connection, string usuarioAd)
         {
             string query = "SELECT COUNT(*) FROM usuarios_ad WHERE usuario_ad = @usuario_ad";
-            
+
             using var command = new SqlCommand(query, connection);
             command.Parameters.AddWithValue("@usuario_ad", usuarioAd ?? "");
-            
+
             int count = (int)command.ExecuteScalar();
             return count > 0;
         }
@@ -145,7 +145,7 @@ namespace ActiveDirectory.Services
             command.Parameters.AddWithValue("@usuario_modificacion", "SISTEMA_AD_SYNC");
 
             int filasAfectadas = command.ExecuteNonQuery();
-            
+
             // Log para auditoría
             if (filasAfectadas > 0)
             {
@@ -204,21 +204,21 @@ namespace ActiveDirectory.Services
 
                 // Intentar obtener como Boolean directamente
                 var value = reader.GetValue(columnIndex);
-                
+
                 if (value is bool boolValue)
                     return boolValue;
-                
+
                 if (value is string stringValue)
                 {
                     // Manejar strings como "true", "false", "1", "0"
                     return stringValue.ToLower() == "true" || stringValue == "1";
                 }
-                
+
                 if (value is int intValue)
                 {
                     return intValue != 0;
                 }
-                
+
                 if (value is byte byteValue)
                 {
                     return byteValue != 0;

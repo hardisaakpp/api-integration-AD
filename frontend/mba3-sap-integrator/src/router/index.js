@@ -46,6 +46,12 @@ const routes = [
         name: 'Soporte',
         component: () => import('@/views/Soporte.vue'),
         meta: { title: 'Soporte Técnico' }
+      },
+      {
+        path: 'consultas-mba3',
+        name: 'ConsultasMBA3',
+        component: () => import('@/views/ConsultasMBA3.vue'),
+        meta: { title: 'Consultas MBA3' }
       }
     ]
   }

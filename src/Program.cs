@@ -12,42 +12,36 @@ namespace AD
 
         private static readonly string SQL_CONNECTION;
         private static readonly string? SQL_SERVER_FOR_LOG;
+        private static readonly string? AD_BIND_USER;
+        private static readonly string? AD_BIND_PASSWORD;
         private static AuthenticationService _authService = null!;
         private static ActiveDirectoryService _adService = null!;
         private static DatabaseService _dbService = null!;
 
         static Program()
         {
-            // Cargar .env si existe (no sobrescribe variables ya definidas en el sistema)
+            // Cargar .env solo para parámetros de AD
             Env.TraversePath().Load();
 
-            string? server = Environment.GetEnvironmentVariable("SQL_SERVER");
-            string? database = Environment.GetEnvironmentVariable("SQL_DATABASE");
-            string? user = Environment.GetEnvironmentVariable("SQL_USER");
-            string? password = Environment.GetEnvironmentVariable("SQL_PASSWORD");
-            string trustCert = Environment.GetEnvironmentVariable("SQL_TRUST_SERVER_CERTIFICATE") ?? "true";
+            AD_BIND_USER = Environment.GetEnvironmentVariable("AD_USER");
+            AD_BIND_PASSWORD = Environment.GetEnvironmentVariable("AD_PASSWORD");
 
-            if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(database) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
-            {
-                throw new InvalidOperationException(
-                    "Faltan variables de entorno para la base de datos. Define: SQL_SERVER, SQL_DATABASE, SQL_USER, SQL_PASSWORD. " +
-                    "Puedes crear un archivo .env en la raíz del proyecto (ver .env.example).");
-            }
-
-            SQL_CONNECTION = $"Server={server};Database={database};User Id={user};Password={password};TrustServerCertificate={trustCert};";
-            SQL_SERVER_FOR_LOG = server;
+            // Cadena fija conocida que funciona con este entorno
+            SQL_CONNECTION = "Data Source=210.17.1.54;Persist Security Info=True;User ID=desadmin;Password=M4B31$tr$d3s4rr0ll0*BDl0g1n#1*;Pooling=False;MultipleActiveResultSets=False;Connect Timeout=30;Encrypt=True;TrustServerCertificate=True;Packet Size=4096;Command Timeout=0;Database=store_control";
+            SQL_SERVER_FOR_LOG = "210.17.1.54";
         }
 
         static void Main(string[] args)
         {
             // Inicializar servicios
-            _authService = new AuthenticationService(DOMAIN);
+            _authService = new AuthenticationService(DOMAIN, SERVER_IP, AD_BIND_USER, AD_BIND_PASSWORD);
             _dbService = new DatabaseService(SQL_CONNECTION);
-            _adService = new ActiveDirectoryService(DOMAIN, SERVER_IP);
+            _adService = new ActiveDirectoryService(DOMAIN, SERVER_IP, AD_BIND_USER, AD_BIND_PASSWORD);
 
             Console.WriteLine("=== APLICACIÓN ACTIVE DIRECTORY ===");
             Console.WriteLine($"Dominio: {DOMAIN}");
             Console.WriteLine($"Servidor: {SERVER_IP}");
+            Console.WriteLine($"Auth AD: {(string.IsNullOrWhiteSpace(AD_BIND_USER) ? "Integrated (Windows)" : "Explícita (AD_USER/AD_PASSWORD)")}");
             Console.WriteLine("=====================================\n");
 
             // Aquí iremos agregando funcionalidades paso a paso
@@ -181,6 +175,7 @@ namespace AD
                 Console.WriteLine("1. Iniciando consulta LDAP...");
                 Console.WriteLine($"   Servidor: {SERVER_IP}");
                 Console.WriteLine($"   Dominio: {DOMAIN}");
+                Console.WriteLine($"   Modo auth: {(string.IsNullOrWhiteSpace(AD_BIND_USER) ? "Integrated (Windows)" : $"Explícita ({AD_BIND_USER})")}");
 
                 var usuarios = _adService.GetAllUsers();
 
@@ -223,6 +218,8 @@ namespace AD
                 }
 
                 Console.WriteLine("\n💡 Diagnóstico sugerido:");
+                Console.WriteLine("  • Si NO estás en una PC unida al dominio, configura AD_USER y AD_PASSWORD");
+                Console.WriteLine("  • Formatos recomendados AD_USER: usuario@sunsetcorp.local o SUNSETCORP\\usuario");
                 Console.WriteLine("  • Ejecutar opción 1 'Probar conexión' primero");
                 Console.WriteLine("  • Verificar que estés en la red del dominio");
                 Console.WriteLine("  • Confirmar que el servidor AD está funcionando");
@@ -285,7 +282,11 @@ namespace AD
                 if (!_dbService.TestConnection())
                 {
                     Console.WriteLine("   ❌ Error de conexión a SQL Server");
-                    Console.WriteLine("   💡 Verifica la cadena de conexión");
+                    if (!string.IsNullOrWhiteSpace(_dbService.LastConnectionError))
+                    {
+                        Console.WriteLine($"   Detalle: {_dbService.LastConnectionError}");
+                    }
+                    Console.WriteLine("   💡 Verifica la cadena de conexión / red / credenciales");
                     return;
                 }
                 Console.WriteLine("   ✅ Conexión SQL Server exitosa");
@@ -360,6 +361,10 @@ namespace AD
                 else
                 {
                     Console.WriteLine("❌ Error de conexión a SQL Server");
+                    if (!string.IsNullOrWhiteSpace(_dbService.LastConnectionError))
+                    {
+                        Console.WriteLine($"Detalle: {_dbService.LastConnectionError}");
+                    }
                     Console.WriteLine("💡 Verifica:");
                     Console.WriteLine("  • Que SQL Server esté ejecutándose");
                     Console.WriteLine("  • La cadena de conexión sea correcta");

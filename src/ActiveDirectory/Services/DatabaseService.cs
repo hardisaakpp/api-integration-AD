@@ -8,6 +8,7 @@ namespace ActiveDirectory.Services
     public class DatabaseService
     {
         private readonly string _connectionString;
+        public string? LastConnectionError { get; private set; }
 
         public DatabaseService(string connectionString)
         {
@@ -18,14 +19,29 @@ namespace ActiveDirectory.Services
         {
             try
             {
+                LastConnectionError = null;
                 using var connection = new SqlConnection(_connectionString);
                 connection.Open();
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                LastConnectionError = BuildFriendlySqlError(ex);
                 return false;
             }
+        }
+
+        private static string BuildFriendlySqlError(Exception ex)
+        {
+            if (ex is SqlException sqlEx)
+            {
+                // No incluir connection string (podría tener secretos).
+                // Mostramos número y primer mensaje para diagnóstico.
+                var first = sqlEx.Errors.Count > 0 ? sqlEx.Errors[0].Message : sqlEx.Message;
+                return $"SQL Error {sqlEx.Number}: {first}";
+            }
+
+            return ex.Message;
         }
 
         public int ImportUsersToDatabase(List<UserDetails> usuarios)

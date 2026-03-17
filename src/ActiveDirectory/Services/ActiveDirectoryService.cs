@@ -10,11 +10,15 @@ namespace ActiveDirectory.Services
     {
         private readonly string _domain;
         private readonly string _serverIp;
+        private readonly string? _bindUser;
+        private readonly string? _bindPassword;
 
-        public ActiveDirectoryService(string domain, string serverIp)
+        public ActiveDirectoryService(string domain, string serverIp, string? bindUser = null, string? bindPassword = null)
         {
             _domain = domain;
             _serverIp = serverIp;
+            _bindUser = string.IsNullOrWhiteSpace(bindUser) ? null : bindUser;
+            _bindPassword = string.IsNullOrWhiteSpace(bindPassword) ? null : bindPassword;
         }
 
         public bool TestConnection()
@@ -23,7 +27,7 @@ namespace ActiveDirectory.Services
             {
 #if WINDOWS
 #pragma warning disable CA1416
-                using (PrincipalContext context = new PrincipalContext(ContextType.Domain, _domain))
+                using (PrincipalContext context = CreatePrincipalContext())
                 {
                     return !string.IsNullOrEmpty(context.Name);
                 }
@@ -42,11 +46,10 @@ namespace ActiveDirectory.Services
         public List<UserDetails> GetAllUsers()
         {
             var usuarios = new List<UserDetails>();
-            try
-            {
 #if WINDOWS
 #pragma warning disable CA1416
-                DirectoryEntry entry = new DirectoryEntry($"LDAP://{_serverIp}");
+                // Si no se especifican credenciales, usa la identidad del proceso (Integrated/SSPI).
+                DirectoryEntry entry = CreateDirectoryEntry($"LDAP://{_serverIp}");
                 DirectorySearcher searcher = new DirectorySearcher(entry);
                 searcher.Filter = "(&(objectClass=user)(objectCategory=person))";
                 // Propiedades que queremos obtener
@@ -81,11 +84,6 @@ namespace ActiveDirectory.Services
                 }
 #pragma warning restore CA1416
 #endif
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error al listar usuarios: {ex.Message}");
-            }
             return usuarios;
         }
 
@@ -95,7 +93,7 @@ namespace ActiveDirectory.Services
             {
 #if WINDOWS
 #pragma warning disable CA1416
-                using (PrincipalContext context = new PrincipalContext(ContextType.Domain, _domain))
+                using (PrincipalContext context = CreatePrincipalContext())
                 {
                     UserPrincipal userPrincipal = UserPrincipal.FindByIdentity(context, username);
                     if (userPrincipal != null)
@@ -165,7 +163,7 @@ namespace ActiveDirectory.Services
             {
 #if WINDOWS
 #pragma warning disable CA1416
-                using (PrincipalContext context = new PrincipalContext(ContextType.Domain, _domain))
+                using (PrincipalContext context = CreatePrincipalContext())
                 {
                     return context.ValidateCredentials(username, password);
                 }
@@ -187,7 +185,7 @@ namespace ActiveDirectory.Services
             {
                 if (propertyName == "objectGUID")
                 {
-                    byte[] guidBytes = result.Properties[propertyName][0] as byte[];
+                    byte[]? guidBytes = result.Properties[propertyName][0] as byte[];
                     return guidBytes != null ? new Guid(guidBytes).ToString() : string.Empty;
                 }
                 return result.Properties[propertyName][0]?.ToString() ?? string.Empty;
@@ -261,7 +259,7 @@ namespace ActiveDirectory.Services
                 var value = de.Properties[propertyName]?.Value;
                 if (value != null)
                 {
-                    return value.ToString();
+                    return value.ToString() ?? string.Empty;
                 }
 #pragma warning restore CA1416
 #endif
@@ -272,5 +270,33 @@ namespace ActiveDirectory.Services
             }
             return string.Empty;
         }
+
+#if WINDOWS
+#pragma warning disable CA1416
+        private PrincipalContext CreatePrincipalContext()
+        {
+            // Nota: si se pasan credenciales aquí, deben ser válidas para el dominio.
+            // Formatos recomendados para bindUser:
+            // - usuario@dominio (UPN)
+            // - DOMINIO\usuario (NetBIOS)
+            if (_bindUser != null && _bindPassword != null)
+            {
+                return new PrincipalContext(ContextType.Domain, _domain, _serverIp, _bindUser, _bindPassword);
+            }
+
+            return new PrincipalContext(ContextType.Domain, _domain, _serverIp);
+        }
+
+        private DirectoryEntry CreateDirectoryEntry(string ldapPath)
+        {
+            if (_bindUser != null && _bindPassword != null)
+            {
+                return new DirectoryEntry(ldapPath, _bindUser, _bindPassword, AuthenticationTypes.Secure);
+            }
+
+            return new DirectoryEntry(ldapPath);
+        }
+#pragma warning restore CA1416
+#endif
     }
 }
